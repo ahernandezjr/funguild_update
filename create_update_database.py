@@ -71,16 +71,21 @@ for taxon in json_data:
             # Iterate through created GUID list
             for guid in guid_list:
                 query_json = get_query_json(GUID_QUERY_URL + guid)
-                if (query_json == None):
-                    print(taxon_name + ' / ' + taxon['guid'] + ': no associated query.')
-                    if verify_status(query_json['taxonomicStatus']):
-                        accepted_matches.append(guid)
+                if isinstance(query_json, list):
+                    for item in query_json:
+                        print(taxon_name + ' / ' + taxon['guid'] + ': no associated query.')
+                        if verify_status(query_json['taxonomicStatus']):
+                            accepted_matches.append(guid)
+                else:
+                    if (query_json == None):
+                        print(taxon_name + ' / ' + taxon['guid'] + ': no associated query.')
+                        if verify_status(query_json['taxonomicStatus']):
+                            accepted_matches.append(guid)
 
         # If 1 ID, do single query
         else:
             query_json = get_query_json(GUID_QUERY_URL + taxon['guid'])
             if (query_json != None):
-                print(type(query_json))
                 if verify_status(query_json['taxonomicStatus']):
                     accepted_matches.append(taxon['guid'])
             else:
