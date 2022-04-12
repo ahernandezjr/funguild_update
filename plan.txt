@@ -1,0 +1,7 @@
+sort by guild, strip punctuation, store to csv
+
+https://raw.githubusercontent.com/rcalix1/TransferLearning/main/HuggingfaceTransformers/someData/TTC4900.csv
+
+
+Reorganize:
+https://www.mycoportal.org/funguild/services/api/db_return.php?qDB=funguild_db&qField=taxon&qText=Tulostoma

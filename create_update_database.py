@@ -1,5 +1,6 @@
 import requests
 import json
+import csv
 from excel2json import convert_from_file
 
 
@@ -10,13 +11,75 @@ def get_query_json(request):
         return None
     return json.loads(response.text)
 
+
+def search_key(taxon, key, dump_list, QUERY_URL):
+    # Assign name
+    taxon_name = taxon['taxon']
+    if ((taxon_name == '' or taxon_name == False) and taxon["CORRECT_taxon"] != ''):
+        taxon_name = taxon["CORRECT_taxon"]
+
+    # Check if the 'key' should be used for searching or not
+    if (taxon[key] == 'NA' or taxon[key] == '' or taxon[key] == False):
+        print(taxon_name + ': ' + key + ' unable to be used.')
+
+    else:
+        # Check if multiple IDs, then maybe more than 1 query
+        key_list = taxon[key]
+        if isinstance(key_list, float):
+            key_list = int(key_list)
+        
+        if (isinstance(key_list, str) and key_list.count(',') > 0):
+            # Converts from an R list to a python list
+            key_list = key_list.split('(')[1].split(')')[0].split(',')
+
+            # Iterate through created key_list
+            for id in key_list:
+                query_json = get_query_json(QUERY_URL + str(id))
+                if isinstance(query_json, list):
+                    for item in query_json:
+                        # Empty query
+                        if (query_json == None):
+                            print(taxon_name + ' / ' + str(id) + ': no associated query.')
+                        # If value to key is a valid status
+                        elif verify_status(item['taxonomicStatus']):
+                            dump_list.append([taxon_name, item['otherID'], id, item['taxonomicStatus']])
+                else:
+                    # Empty query
+                    if (query_json == None):
+                        print(taxon_name + ' / ' + str(id) + ': no associated query.')
+                    # If value to key is a valid status
+                    elif verify_status(query_json['taxonomicStatus']):
+                        dump_list.append([taxon_name, query_json['otherID'], id, query_json['taxonomicStatus']])
+
+        # If 1 ID, do single query
+        else:
+            query_json = get_query_json(QUERY_URL + str(key_list))
+            # Checks if multiple results for id
+            if isinstance(query_json, list):
+                for item in query_json:
+                    # Empty query
+                    if (query_json == None):
+                        print(taxon_name + ' / ' + str(key_list) + ': no associated query.')
+                    # If value to key is a valid status
+                    elif verify_status(item['taxonomicStatus']):
+                        dump_list.append([taxon_name, item['otherID'], key_list, item['taxonomicStatus']])
+            # Only 1 results for id
+            else:
+                # Empty query
+                if (query_json == None):
+                    print(taxon_name + ' / ' + str(key_list) + ': no associated query.')
+                # If value to key is a valid status
+                elif verify_status(query_json['taxonomicStatus']):
+                    dump_list.append([taxon_name, query_json['otherID'], key_list, query_json['taxonomicStatus']])
+
+
 # Verifies if the 'status' is in the accepted taxonomy
 # Returns a True or False
 def verify_status(status):
     # Loop through all accepted taxonomy
     for accepted in ACCEPTED_TAXONOMY:
         # Return True if in the tuple
-        if (status == accepted):
+        if (status.casefold() == accepted.casefold()):
             return True
 
     # Return False if not in tuple
@@ -32,7 +95,7 @@ ACCEPTED_TAXONOMY = ('conserved', 'legitimate', 'assumed legitimate')
 
 # Variables to be used
 json_data = []
-
+final_matches = []
 
 # Create json file from excel and load json
 excel_import_file = 'FuNGuild_Need_Help.xls'
@@ -41,90 +104,39 @@ convert_from_file(excel_import_file)
 with open('Sheet1.json') as json_file:
     json_data = json.load(json_file)
 
+i = 1
 
 # Begins iterations of every json object in json file
 for taxon in json_data:
+    print('Starting job ' + str(i) + ':')
+
     # Accepted matches are put into a list for final checking
     accepted_matches = []
 
-    # Assign name
-    taxon_name = taxon['taxon']
-    if ((taxon_name != False or taxon_name != '') and taxon["CORRECT_taxon"] != ''):
-        taxon_name = taxon["CORRECT_taxon"]
-
     # Ignore completed tag items
     if taxon['completed'] == 'x':
-        print(taxon_name + ': already completed.')
+        print(taxon['taxon'] + ': already completed.')
+        i += 1
         continue
     
-    
-    print('Starting: ' + taxon_name)
-
     # 1 --- First, attempt GUID
-    if (taxon['guid'] != False or taxon['guid'] != 'NA' or taxon['guid'] != ''):
-        # Check if multiple GUIDs, then maybe more than 1 query
-        guid_list = taxon['guid']
-        if guid_list.count(',') > 0:
-            # Converts from an R list to a python list
-            guid_list = guid_list.split('(')[1].split(')')[0].split(',')
-
-            # Iterate through created GUID list
-            for guid in guid_list:
-                query_json = get_query_json(GUID_QUERY_URL + guid)
-                if isinstance(query_json, list):
-                    for item in query_json:
-                        print(taxon_name + ' / ' + taxon['guid'] + ': no associated query.')
-                        if verify_status(query_json['taxonomicStatus']):
-                            accepted_matches.append(guid)
-                else:
-                    if (query_json == None):
-                        print(taxon_name + ' / ' + taxon['guid'] + ': no associated query.')
-                        if verify_status(query_json['taxonomicStatus']):
-                            accepted_matches.append(guid)
-
-        # If 1 ID, do single query
-        else:
-            query_json = get_query_json(GUID_QUERY_URL + taxon['guid'])
-            if (query_json != None):
-                if verify_status(query_json['taxonomicStatus']):
-                    accepted_matches.append(taxon['guid'])
-            else:
-                print(taxon_name + ' / ' + taxon['guid'] + ': no associated query.')
-
-
+    search_key(taxon, 'guid', accepted_matches, GUID_QUERY_URL)
 
     # # 2 --- Then, attempt with MycoBank Number
-    # if (taxon['mbNumber'] != False or taxon['mbNumber'] != 'NA'  or taxon['mbNumber'] != 'NA' or taxon['mbNumber'] != ''):
-    #     query_json = get_query_json(MBNUM_QUERY_URL + taxon['mbNumber'].split('.')[0])
+    search_key(taxon, 'mbNumber', accepted_matches, MBNUM_QUERY_URL)
 
-    #     if (query_json == None):
-    #         print(taxon_name + ' / ' + taxon['mbNumber'] + ': no associated query.')
-    #     else:
-    #         if verify_status(query_json['taxonomicStatus']):
-    #             accepted_matches.append(taxon['mbNumber'])
+    if accepted_matches:
+        final_match = accepted_matches[0]
 
-    # TEST --- First, attempt GUID
-    if (taxon['mbNumber'] != False or taxon['mbNumber'] != ''):
-        # Check if multiple GUIDs, then maybe more than 1 query
-        mbNumber_list = taxon['mbNumber']
-        if mbNumber_list.count(',') > 0:
-            # Converts from an R list to a python list
-            mbNumber_list = mbNumber_list.split('(')[1].split(')')[0].split(',')
+        for item in accepted_matches:
+            if ACCEPTED_TAXONOMY.index(item[3].lower()) < ACCEPTED_TAXONOMY.index(final_match[3].lower()):
+                final_match = item
 
-            # Iterate through created mbNumber list
-            for mbNumber in mbNumber_list:
-                query_json = get_query_json(MBNUM_QUERY_URL + guid)
-                if (query_json == None):
-                    print(taxon_name + ' / ' + taxon['mbNumber'] + ': no associated query.')
-                    if verify_status(query_json['taxonomicStatus']):
-                        accepted_matches.append(mbNumber)
+        final_matches.append(final_match)
 
-        # If 1 ID, do single query
-        else:
-            query_json = get_query_json(MBNUM_QUERY_URL + taxon['guid'])
-            if (query_json != None):
-                if verify_status(query_json['taxonomicStatus']):
-                    accepted_matches.append(taxon['mbNumber'])
-            else:
-                print(taxon_name + ' / ' + taxon['mbNumber'] + ': no associated query.')
-    
+    i += 1
+
+with open('final_matches.csv', 'w') as f:
+    f.write('taxon,fdexOtherID,queryID,otherIDStatus\n')
+    wr = csv.writer(f)
+    wr.writerows(final_matches)
